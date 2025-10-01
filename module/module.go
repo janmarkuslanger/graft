@@ -25,7 +25,7 @@ func (m *Module[T]) Name() string {
 	return m.name
 }
 
-func (m *Module[T]) AddDepencies(deps *T) {
+func (m *Module[T]) AddDependencies(deps *T) {
 	m.deps = deps
 }
 
