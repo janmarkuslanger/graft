@@ -24,8 +24,10 @@ type Graft struct {
 	modules []Module
 }
 
+var listenAndServe = http.ListenAndServe
+
 func (g *Graft) Run() {
-	http.ListenAndServe(":8080", g.router)
+	listenAndServe(":8080", g.router)
 }
 
 func (g *Graft) UseModule(m Module) {

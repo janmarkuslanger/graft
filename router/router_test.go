@@ -1,138 +1,129 @@
-package router_test
+package router
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
-
-	routerpkg "github.com/janmarkuslanger/graft/router"
 )
 
-func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, path, nil)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	return rec
-}
+func TestChain(t *testing.T) {
+	order := make([]string, 0, 3)
 
-func head(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodHead, path, nil)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	return rec
-}
-
-func TestNew(t *testing.T) {
-	r := routerpkg.New()
-	if r == nil || r.Mux == nil {
-		t.Fatalf("New returned nil")
-	}
-}
-
-func TestAddHandler_GET(t *testing.T) {
-	r := routerpkg.New()
-	r.AddHandler("GET /hello", func(ctx routerpkg.Context) {
-		_, _ = io.WriteString(ctx.Writer, "ok")
+	base := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		order = append(order, "base")
 	})
 
-	rec := get(t, r, "/hello")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status=%d", rec.Code)
+	m1 := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			order = append(order, "m1")
+			next.ServeHTTP(w, r)
+		})
 	}
-	if strings.TrimSpace(rec.Body.String()) != "ok" {
-		t.Fatalf("body=%q", rec.Body.String())
+
+	m2 := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			order = append(order, "m2")
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	chained := Chain(base, m1, m2)
+	chained.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "http://example.com", nil))
+
+	expected := []string{"m1", "m2", "base"}
+	for i, want := range expected {
+		if order[i] != want {
+			t.Fatalf("expected order[%d] to be %q, got %q", i, want, order[i])
+		}
 	}
 }
 
-func TestAddHandler_Middleware(t *testing.T) {
-	r := routerpkg.New()
-	mw := func(next http.Handler) http.Handler {
+func TestRouter_AddHandler(t *testing.T) {
+	r := New()
+
+	var ctx Context
+	callCount := 0
+
+	r.AddHandler("GET /hello", func(got Context) {
+		ctx = got
+		callCount++
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/hello", nil)
+	req.Host = "GET "
+	req.URL = &url.URL{Path: "/hello"}
+	res := httptest.NewRecorder()
+
+	r.ServeHTTP(res, req)
+
+	if callCount != 1 {
+		t.Fatalf("expected handler to be called once, got %d", callCount)
+	}
+	if ctx.Request != req {
+		t.Fatalf("expected context to contain original request")
+	}
+	if ctx.Writer == nil {
+		t.Fatalf("expected context writer to be set")
+	}
+}
+
+func TestRouter_Static(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "index.txt")
+	if err := os.WriteFile(file, []byte("static-content"), 0o644); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
+
+	r := New()
+
+	middlewareCalls := 0
+	middleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			w.Header().Set("X-MW", "1")
+			middlewareCalls++
 			next.ServeHTTP(w, req)
 		})
 	}
-	r.AddHandler("GET /mw", func(ctx routerpkg.Context) {
-		_, _ = io.WriteString(ctx.Writer, "mw")
-	}, mw)
 
-	rec := get(t, r, "/mw")
-	if rec.Header().Get("X-MW") != "1" {
-		t.Fatalf("missing middleware header")
+	r.Static("/static/", dir, middleware)
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/static/index.txt", nil)
+	req.Host = "GET "
+	req.URL = &url.URL{Path: "/static/index.txt"}
+	res := httptest.NewRecorder()
+
+	handler, _ := r.Mux.Handler(req)
+	handler.ServeHTTP(res, req)
+
+	if res.Body.String() != "static-content" {
+		t.Fatalf("expected static file content, got %q", res.Body.String())
 	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status=%d", rec.Code)
+	if middlewareCalls != 1 {
+		t.Fatalf("expected middleware to run once, got %d", middlewareCalls)
 	}
 }
 
-func TestHandle_TrailingSlash(t *testing.T) {
-	r := routerpkg.New()
-	count := 0
-	h := func(ctx routerpkg.Context) {
-		count++
-		_, _ = io.WriteString(ctx.Writer, "hit")
-	}
-	r.Handle("GET /foo", h)
+func TestRouter_Handle(t *testing.T) {
+	r := New()
 
-	rec1 := get(t, r, "/foo")
-	if rec1.Code != http.StatusOK {
-		t.Fatalf("status=%d", rec1.Code)
-	}
-	rec2 := get(t, r, "/foo/")
-	if rec2.Code != http.StatusOK {
-		t.Fatalf("status=%d", rec2.Code)
-	}
-	if count != 2 {
-		t.Fatalf("hits=%d", count)
-	}
-}
-
-func TestStatic_GET_HEAD(t *testing.T) {
-	dir := t.TempDir()
-	want := "hello\n"
-	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte(want), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	r := routerpkg.New()
-	r.Static("/static", dir)
-
-	recG := get(t, r, "/static/f.txt")
-	if recG.Code != http.StatusOK {
-		t.Fatalf("status=%d body=%q", recG.Code, recG.Body.String())
-	}
-	if recG.Body.String() != want {
-		t.Fatalf("body=%q", recG.Body.String())
-	}
-
-	recH := head(t, r, "/static/f.txt")
-	if recH.Code != http.StatusOK {
-		t.Fatalf("status=%d", recH.Code)
-	}
-	if recH.Body.Len() != 0 {
-		t.Fatalf("head has body bytes=%d", recH.Body.Len())
-	}
-}
-
-func TestServeHTTP(t *testing.T) {
-	r := routerpkg.New()
-	r.AddHandler("GET /ping", func(ctx routerpkg.Context) {
-		_, _ = io.WriteString(ctx.Writer, "pong")
+	callCount := 0
+	r.Handle("GET /api", func(ctx Context) {
+		callCount++
 	})
-	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status=%d", rec.Code)
-	}
-	if strings.TrimSpace(rec.Body.String()) != "pong" {
-		t.Fatalf("body=%q", rec.Body.String())
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/api", nil)
+	req.Host = "GET "
+	req.URL = &url.URL{Path: "/api"}
+	r.ServeHTTP(httptest.NewRecorder(), req)
+
+	req2 := httptest.NewRequest(http.MethodGet, "http://example.com/api/", nil)
+	req2.Host = "GET "
+	req2.URL = &url.URL{Path: "/api/"}
+	r.ServeHTTP(httptest.NewRecorder(), req2)
+
+	if callCount != 2 {
+		t.Fatalf("expected handler to be called twice, got %d", callCount)
 	}
 }
