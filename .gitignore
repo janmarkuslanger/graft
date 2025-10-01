@@ -31,4 +31,4 @@ go.work.sum
 # .idea/
 .vscode/
 
-local_test.go
+local.go

@@ -24,7 +24,7 @@ func TestModule_AddDependenciesAndBuildRoutes(t *testing.T) {
 
 	m := module.New[deps]("Test", "/test", deps{value: "old"})
 	newDeps := &deps{value: "new"}
-	m.AddDepencies(newDeps)
+	m.AddDependencies(newDeps)
 
 	var (
 		handlerCalled bool
