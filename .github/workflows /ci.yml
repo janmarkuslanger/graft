@@ -16,7 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.24'
+          go-version: '1.23'
 
       - name: Download dependencies
         run: go mod download
@@ -31,4 +31,4 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: janmarkuslanger/ssgo
+          slug: janmarkuslanger/graft
