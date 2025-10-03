@@ -8,36 +8,32 @@ import (
 	"github.com/janmarkuslanger/graft/router"
 )
 
-func TestChain(t *testing.T) {
+func TestMiddleware_Chain(t *testing.T) {
 	var callOrder []string
 
-	mw1 := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			callOrder = append(callOrder, "mw1-before")
-			next.ServeHTTP(w, r)
-			callOrder = append(callOrder, "mw1-after")
-		})
+	mw1 := func(ctx router.Context, next router.HandlerFunc) {
+		callOrder = append(callOrder, "mw1-before")
+		next(ctx)
+		callOrder = append(callOrder, "mw1-after")
 	}
 
-	mw2 := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			callOrder = append(callOrder, "mw2-before")
-			next.ServeHTTP(w, r)
-			callOrder = append(callOrder, "mw2-after")
-		})
+	mw2 := func(ctx router.Context, next router.HandlerFunc) {
+		callOrder = append(callOrder, "mw2-before")
+		next(ctx)
+		callOrder = append(callOrder, "mw2-after")
 	}
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := func(ctx router.Context) {
 		callOrder = append(callOrder, "handler")
-		w.WriteHeader(http.StatusOK)
-	})
+		ctx.Writer.WriteHeader(http.StatusNoContent)
+	}
 
 	chained := router.Chain(handler, mw1, mw2)
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 
-	chained.ServeHTTP(w, req)
+	chained(router.Context{Writer: w, Request: req})
 
 	expectedOrder := []string{
 		"mw1-before",
@@ -57,7 +53,7 @@ func TestChain(t *testing.T) {
 		}
 	}
 
-	if w.Result().StatusCode != http.StatusOK {
-		t.Errorf("expected status 200, got %d", w.Result().StatusCode)
+	if w.Result().StatusCode != http.StatusNoContent {
+		t.Errorf("expected status %d, got %d", http.StatusNoContent, w.Result().StatusCode)
 	}
 }

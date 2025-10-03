@@ -1,10 +1,19 @@
 package router
 
-import "net/http"
+type Middleware func(Context, HandlerFunc)
 
-func Chain(h http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {
-	for i := len(middlewares) - 1; i >= 0; i-- {
-		h = middlewares[i](h)
+func Chain(handler HandlerFunc, middlewares ...Middleware) HandlerFunc {
+	if len(middlewares) == 0 {
+		return handler
 	}
-	return h
+
+	wrapped := handler
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		mw := middlewares[i]
+		next := wrapped
+		wrapped = func(ctx Context) {
+			mw(ctx, next)
+		}
+	}
+	return wrapped
 }

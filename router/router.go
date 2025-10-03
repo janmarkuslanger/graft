@@ -22,28 +22,29 @@ type Router struct {
 	Mux *http.ServeMux
 }
 
-func (r *Router) AddHandler(pattern string, handler HandlerFunc, middlewares ...func(http.Handler) http.Handler) {
-	baseHandler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		handler(Context{
+func (r *Router) AddHandler(pattern string, handler HandlerFunc, middlewares ...Middleware) {
+	finalHandler := Chain(handler, middlewares...)
+	r.Mux.HandleFunc(pattern, func(w http.ResponseWriter, req *http.Request) {
+		finalHandler(Context{
 			Writer:  w,
 			Request: req,
 		})
 	})
-
-	finalHandler := Chain(baseHandler, middlewares...)
-	r.Mux.Handle(pattern, finalHandler)
 }
 
-func (r *Router) Static(urlPrefix, dir string, middlewares ...func(http.Handler) http.Handler) {
+func (r *Router) Static(urlPrefix, dir string, middlewares ...Middleware) {
 	// remove every / at the end so we dont have multiple /
 	prefix := strings.TrimRight(urlPrefix, "/") + "/"
 	h := http.StripPrefix(prefix, http.FileServer(http.Dir(dir)))
-	final := Chain(h, middlewares...)
-	r.Mux.Handle("GET "+prefix, final)
-	r.Mux.Handle("HEAD "+prefix, final)
+	r.AddHandler("GET "+prefix, func(ctx Context) {
+		h.ServeHTTP(ctx.Writer, ctx.Request)
+	}, middlewares...)
+	r.AddHandler("HEAD "+prefix, func(ctx Context) {
+		h.ServeHTTP(ctx.Writer, ctx.Request)
+	}, middlewares...)
 }
 
-func (r *Router) Handle(pattern string, handler HandlerFunc, middlewares ...func(http.Handler) http.Handler) {
+func (r *Router) Handle(pattern string, handler HandlerFunc, middlewares ...Middleware) {
 	fmt.Println("Serving route(s) with pattern: " + pattern)
 
 	r.AddHandler(pattern, handler, middlewares...)
