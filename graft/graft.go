@@ -15,7 +15,6 @@ func New() *Graft {
 }
 
 type Module interface {
-	Name() string
 	BuildRoutes(router router.Router)
 }
 
