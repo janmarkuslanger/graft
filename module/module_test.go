@@ -9,24 +9,21 @@ import (
 	"github.com/janmarkuslanger/graft/router"
 )
 
-func TestModule_New(t *testing.T) {
-	name := "User"
-	m := module.New[any](name, "/user", struct{}{})
-	if m.Name() != name {
-		t.Fatalf("expected module name to be %q", name)
-	}
-}
-
-func TestModule_AddRoute(t *testing.T) {
-	m := module.New[any]("User", "/user", struct{}{})
-	m.AddRoute(module.Route[any]{
-		Path:   "/login",
-		Method: "GET",
-		Handler: func(ctx router.Context, deps any) {
-			ctx.Writer.WriteHeader(http.StatusOK)
-			ctx.Writer.Write([]byte("Hello World"))
+func TestModule_WithRoute(t *testing.T) {
+	m := module.Module[any]{
+		Name:     "User",
+		BasePath: "/user",
+		Routes: []module.Route[any]{
+			module.Route[any]{
+				Path:   "/login",
+				Method: "GET",
+				Handler: func(ctx router.Context, deps any) {
+					ctx.Writer.WriteHeader(http.StatusOK)
+					ctx.Writer.Write([]byte("Hello World"))
+				},
+			},
 		},
-	})
+	}
 
 	r := router.New()
 	m.BuildRoutes(*r)
@@ -55,15 +52,20 @@ func TestModule_WithDeps(t *testing.T) {
 		UserService UserService
 	}
 
-	m := module.New("User", "/user", Deps{UserService: UserService{}})
-	m.AddRoute(module.Route[Deps]{
-		Path:   "/login",
-		Method: "GET",
-		Handler: func(ctx router.Context, deps Deps) {
-			ctx.Writer.WriteHeader(http.StatusOK)
-			ctx.Writer.Write([]byte(deps.UserService.Login()))
+	m := module.Module[Deps]{
+		Name:     "User",
+		BasePath: "/user",
+		Routes: []module.Route[Deps]{
+			module.Route[Deps]{
+				Path:   "/login",
+				Method: "GET",
+				Handler: func(ctx router.Context, deps Deps) {
+					ctx.Writer.WriteHeader(http.StatusOK)
+					ctx.Writer.Write([]byte(deps.UserService.Login()))
+				},
+			},
 		},
-	})
+	}
 
 	r := router.New()
 	m.BuildRoutes(*r)
@@ -78,5 +80,43 @@ func TestModule_WithDeps(t *testing.T) {
 	}
 	if rr.Body.String() != "Logged in" {
 		t.Errorf("expected body 'Logged in', got %q", rr.Body.String())
+	}
+}
+
+func TestModule_WithMiddleware(t *testing.T) {
+	m := module.Module[any]{
+		Name:     "User",
+		BasePath: "/user",
+		Routes: []module.Route[any]{
+			module.Route[any]{
+				Path:   "/login",
+				Method: "GET",
+				Handler: func(ctx router.Context, deps any) {
+					ctx.Writer.WriteHeader(http.StatusOK)
+					ctx.Writer.Write([]byte("Hello World"))
+				},
+			},
+		},
+		Middlewares: []router.Middleware{
+			func(ctx router.Context, next router.HandlerFunc) {
+				ctx.Writer.WriteHeader(http.StatusOK)
+				ctx.Writer.Write([]byte("I am a middleware"))
+			},
+		},
+	}
+
+	r := router.New()
+	m.BuildRoutes(*r)
+
+	req := httptest.NewRequest("GET", "/user/login", nil)
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+	if rr.Body.String() != "I am a middleware" {
+		t.Errorf("expected body 'I am a middleware', got %q", rr.Body.String())
 	}
 }

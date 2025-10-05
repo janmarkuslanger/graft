@@ -3,6 +3,8 @@ package router_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/janmarkuslanger/graft/router"
@@ -81,5 +83,39 @@ func TestRouter_Handle_AddWithSlash(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected status 200, got %d", rr.Code)
 		}
+	}
+}
+
+func TestRouter_Static_ServesFiles(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "hello.txt")
+	contents := []byte("hello static")
+	if err := os.WriteFile(filePath, contents, 0o600); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
+
+	r := router.New()
+	r.Static("/assets/", dir)
+
+	getReq := httptest.NewRequest(http.MethodGet, "/assets/hello.txt", nil)
+	getRec := httptest.NewRecorder()
+	r.ServeHTTP(getRec, getReq)
+
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", getRec.Code)
+	}
+	if getRec.Body.String() != string(contents) {
+		t.Fatalf("expected body %q, got %q", contents, getRec.Body.String())
+	}
+
+	headReq := httptest.NewRequest(http.MethodHead, "/assets/hello.txt", nil)
+	headRec := httptest.NewRecorder()
+	r.ServeHTTP(headRec, headReq)
+
+	if headRec.Code != http.StatusOK {
+		t.Fatalf("expected HEAD status 200, got %d", headRec.Code)
+	}
+	if headRec.Body.Len() != 0 {
+		t.Fatalf("expected empty HEAD body, got %q", headRec.Body.String())
 	}
 }
