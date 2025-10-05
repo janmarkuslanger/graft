@@ -12,8 +12,6 @@ type Route[T any] struct {
 	Handler func(ctx router.Context, deps T)
 }
 
-type Handler[T any] func(ctx router.Context, deps T) error
-
 type Module[T any] struct {
 	name     string
 	basePath string
