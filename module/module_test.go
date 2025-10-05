@@ -1,8 +1,8 @@
 package module_test
 
 import (
+	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 
 	"github.com/janmarkuslanger/graft/module"
@@ -17,44 +17,66 @@ func TestModule_New(t *testing.T) {
 	}
 }
 
-func TestModule_AddDependenciesAndBuildRoutes(t *testing.T) {
-	type deps struct {
-		value string
-	}
-
-	m := module.New[deps]("Test", "/test", deps{value: "old"})
-	newDeps := &deps{value: "new"}
-	m.AddDependencies(newDeps)
-
-	var (
-		handlerCalled bool
-		received      deps
-	)
-
-	m.AddRoute(module.Route[deps]{
-		Path:   "/info",
+func TestModule_AddRoute(t *testing.T) {
+	m := module.New[any]("User", "/user", struct{}{})
+	m.AddRoute(module.Route[any]{
+		Path:   "/login",
 		Method: "GET",
-		Handler: func(ctx router.Context, d deps) {
-			handlerCalled = true
-			received = d
+		Handler: func(ctx router.Context, deps any) {
+			ctx.Writer.WriteHeader(http.StatusOK)
+			ctx.Writer.Write([]byte("Hello World"))
 		},
 	})
 
 	r := router.New()
 	m.BuildRoutes(*r)
 
-	req := httptest.NewRequest("GET", "http://example.com/test/info", nil)
-	req.Host = "GET "
-	req.URL = &url.URL{Path: "/test/info"}
-	res := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/user/login", nil)
+	rr := httptest.NewRecorder()
 
-	handler, _ := r.Mux.Handler(req)
-	handler.ServeHTTP(res, req)
+	r.ServeHTTP(rr, req)
 
-	if !handlerCalled {
-		t.Fatalf("expected route handler to be called")
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
 	}
-	if received.value != "new" {
-		t.Fatalf("expected deps value 'new', got %q", received.value)
+	if rr.Body.String() != "Hello World" {
+		t.Errorf("expected body 'Hello World', got %q", rr.Body.String())
+	}
+}
+
+type UserService struct{}
+
+func (s UserService) Login() string {
+	return "Logged in"
+}
+
+func TestModule_WithDeps(t *testing.T) {
+	type Deps struct {
+		UserService UserService
+	}
+
+	m := module.New("User", "/user", Deps{UserService: UserService{}})
+	m.AddRoute(module.Route[Deps]{
+		Path:   "/login",
+		Method: "GET",
+		Handler: func(ctx router.Context, deps Deps) {
+			ctx.Writer.WriteHeader(http.StatusOK)
+			ctx.Writer.Write([]byte(deps.UserService.Login()))
+		},
+	})
+
+	r := router.New()
+	m.BuildRoutes(*r)
+
+	req := httptest.NewRequest("GET", "/user/login", nil)
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+	if rr.Body.String() != "Logged in" {
+		t.Errorf("expected body 'Logged in', got %q", rr.Body.String())
 	}
 }
