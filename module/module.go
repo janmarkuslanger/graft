@@ -23,6 +23,6 @@ func (m *Module[T]) BuildRoutes(r router.Router) {
 		handlerFunc := func(ctx router.Context) {
 			route.Handler(ctx, deps)
 		}
-		r.AddHandler(path, handlerFunc)
+		r.AddHandler(path, handlerFunc, m.Middlewares...)
 	}
 }
