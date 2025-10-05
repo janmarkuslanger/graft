@@ -9,24 +9,21 @@ import (
 	"github.com/janmarkuslanger/graft/router"
 )
 
-func TestModule_New(t *testing.T) {
-	name := "User"
-	m := module.New[any](name, "/user", struct{}{})
-	if m.Name() != name {
-		t.Fatalf("expected module name to be %q", name)
-	}
-}
-
 func TestModule_AddRoute(t *testing.T) {
-	m := module.New[any]("User", "/user", struct{}{})
-	m.AddRoute(module.Route[any]{
-		Path:   "/login",
-		Method: "GET",
-		Handler: func(ctx router.Context, deps any) {
-			ctx.Writer.WriteHeader(http.StatusOK)
-			ctx.Writer.Write([]byte("Hello World"))
+	m := module.Module[any]{
+		Name:     "User",
+		BasePath: "/user",
+		Routes: []module.Route[any]{
+			module.Route[any]{
+				Path:   "/login",
+				Method: "GET",
+				Handler: func(ctx router.Context, deps any) {
+					ctx.Writer.WriteHeader(http.StatusOK)
+					ctx.Writer.Write([]byte("Hello World"))
+				},
+			},
 		},
-	})
+	}
 
 	r := router.New()
 	m.BuildRoutes(*r)
@@ -55,15 +52,20 @@ func TestModule_WithDeps(t *testing.T) {
 		UserService UserService
 	}
 
-	m := module.New("User", "/user", Deps{UserService: UserService{}})
-	m.AddRoute(module.Route[Deps]{
-		Path:   "/login",
-		Method: "GET",
-		Handler: func(ctx router.Context, deps Deps) {
-			ctx.Writer.WriteHeader(http.StatusOK)
-			ctx.Writer.Write([]byte(deps.UserService.Login()))
+	m := module.Module[Deps]{
+		Name:     "User",
+		BasePath: "/user",
+		Routes: []module.Route[Deps]{
+			module.Route[Deps]{
+				Path:   "/login",
+				Method: "GET",
+				Handler: func(ctx router.Context, deps Deps) {
+					ctx.Writer.WriteHeader(http.StatusOK)
+					ctx.Writer.Write([]byte(deps.UserService.Login()))
+				},
+			},
 		},
-	})
+	}
 
 	r := router.New()
 	m.BuildRoutes(*r)
