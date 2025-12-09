@@ -166,7 +166,7 @@ func TestModule_LifecycleAllowsDepsMutation(t *testing.T) {
 	r := router.New()
 	m.BuildRoutes(*r)
 
-	// Simulate lifecycle hook changing dependencies after routes are built.
+	// Directly mutate dependencies after routes are built to verify handler sees updated value.
 	m.Deps.Message = "updated after lifecycle"
 
 	req := httptest.NewRequest("GET", "/msg/hello", nil)
