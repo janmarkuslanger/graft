@@ -12,7 +12,7 @@ type testModule struct {
 	built bool
 }
 
-type lifecycleModule struct {
+type hookModule struct {
 	used    int
 	started int
 }
@@ -25,13 +25,13 @@ func (m *testModule) BuildRoutes(r router.Router) {
 	m.built = r.Mux != nil
 }
 
-func (m *lifecycleModule) BuildRoutes(r router.Router) {}
+func (m *hookModule) BuildRoutes(r router.Router) {}
 
-func (m *lifecycleModule) OnUse() {
+func (m *hookModule) OnUse() {
 	m.used++
 }
 
-func (m *lifecycleModule) OnStart() {
+func (m *hookModule) OnStart() {
 	m.started++
 }
 
@@ -87,9 +87,9 @@ func TestGraft_Run(t *testing.T) {
 	}
 }
 
-func TestGraft_LifecycleHooks(t *testing.T) {
+func TestGraft_Hooks(t *testing.T) {
 	app := New()
-	mod := &lifecycleModule{}
+	mod := &hookModule{}
 
 	app.UseModule(mod)
 

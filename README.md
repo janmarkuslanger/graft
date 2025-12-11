@@ -120,12 +120,12 @@ auth := module.Module[AuthDeps]{
 }
 ```
 
-Lifecycle hooks let a module prepare dependencies or kick off background work:
+Hooks let a module prepare dependencies or kick off background work:
 
 ```go
 auth := module.Module[AuthDeps]{
     // ...
-    Lifecycle: module.Lifecycle[AuthDeps]{
+    Hooks: module.Hooks[AuthDeps]{
         OnUse: func(deps *AuthDeps) {
             deps.Users = users.WithCache()
         },

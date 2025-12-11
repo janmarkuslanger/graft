@@ -8,7 +8,7 @@ type Route[T any] struct {
 	Handler func(ctx router.Context, deps T)
 }
 
-type Lifecycle[T any] struct {
+type Hooks[T any] struct {
 	OnUse   func(deps *T)
 	OnStart func(deps *T)
 }
@@ -19,7 +19,7 @@ type Module[T any] struct {
 	Deps        T
 	Routes      []Route[T]
 	Middlewares []router.Middleware
-	Lifecycle   Lifecycle[T]
+	Hooks       Hooks[T]
 }
 
 func (m *Module[T]) BuildRoutes(r router.Router) {
@@ -35,13 +35,13 @@ func (m *Module[T]) BuildRoutes(r router.Router) {
 }
 
 func (m *Module[T]) OnUse() {
-	if m.Lifecycle.OnUse != nil {
-		m.Lifecycle.OnUse(&m.Deps)
+	if m.Hooks.OnUse != nil {
+		m.Hooks.OnUse(&m.Deps)
 	}
 }
 
 func (m *Module[T]) OnStart() {
-	if m.Lifecycle.OnStart != nil {
-		m.Lifecycle.OnStart(&m.Deps)
+	if m.Hooks.OnStart != nil {
+		m.Hooks.OnStart(&m.Deps)
 	}
 }

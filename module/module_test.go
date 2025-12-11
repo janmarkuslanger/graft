@@ -14,7 +14,7 @@ func TestModule_WithRoute(t *testing.T) {
 		Name:     "User",
 		BasePath: "/user",
 		Routes: []module.Route[any]{
-			module.Route[any]{
+			{
 				Path:   "/login",
 				Method: "GET",
 				Handler: func(ctx router.Context, deps any) {
@@ -61,7 +61,7 @@ func TestModule_WithDeps(t *testing.T) {
 		Name:     "User",
 		BasePath: "/user",
 		Routes: []module.Route[Deps]{
-			module.Route[Deps]{
+			{
 				Path:   "/login",
 				Method: "GET",
 				Handler: func(ctx router.Context, deps Deps) {
@@ -70,14 +70,14 @@ func TestModule_WithDeps(t *testing.T) {
 				},
 			},
 		},
-		Lifecycle: module.Lifecycle[Deps]{
+		Hooks: module.Hooks[Deps]{
 			OnUse: func(deps *Deps) {
 				onUseCalled = true
 				deps.UserService = UserService{}
 			},
 			OnStart: func(deps *Deps) {
 				if deps.UserService.Login() == "" {
-					t.Fatalf("expected lifecycle hooks to see deps updates")
+					t.Fatalf("expected hooks to see deps updates")
 				}
 				onStartCalled = true
 			},
@@ -113,7 +113,7 @@ func TestModule_WithMiddleware(t *testing.T) {
 		Name:     "User",
 		BasePath: "/user",
 		Routes: []module.Route[any]{
-			module.Route[any]{
+			{
 				Path:   "/login",
 				Method: "GET",
 				Handler: func(ctx router.Context, deps any) {
@@ -146,7 +146,7 @@ func TestModule_WithMiddleware(t *testing.T) {
 	}
 }
 
-func TestModule_LifecycleAllowsDepsMutation(t *testing.T) {
+func TestModule_HooksAllowDepsMutation(t *testing.T) {
 	type Deps struct {
 		Message string
 	}
@@ -167,14 +167,14 @@ func TestModule_LifecycleAllowsDepsMutation(t *testing.T) {
 	m.BuildRoutes(*r)
 
 	// Directly mutate dependencies after routes are built to verify handler sees updated value.
-	m.Deps.Message = "updated after lifecycle"
+	m.Deps.Message = "updated after hooks"
 
 	req := httptest.NewRequest("GET", "/msg/hello", nil)
 	rr := httptest.NewRecorder()
 
 	r.ServeHTTP(rr, req)
 
-	if rr.Body.String() != "updated after lifecycle" {
+	if rr.Body.String() != "updated after hooks" {
 		t.Fatalf("expected updated dependency to be visible in handler, got %q", rr.Body.String())
 	}
 }
