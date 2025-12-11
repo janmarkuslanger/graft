@@ -12,12 +12,27 @@ type testModule struct {
 	built bool
 }
 
+type hookModule struct {
+	used    int
+	started int
+}
+
 func (m *testModule) Name() string {
 	return "Test"
 }
 
 func (m *testModule) BuildRoutes(r router.Router) {
 	m.built = r.Mux != nil
+}
+
+func (m *hookModule) BuildRoutes(r router.Router) {}
+
+func (m *hookModule) OnUse() {
+	m.used++
+}
+
+func (m *hookModule) OnStart() {
+	m.started++
 }
 
 func TestGraft_New(t *testing.T) {
@@ -70,4 +85,26 @@ func TestGraft_Run(t *testing.T) {
 	if seenHandler == nil {
 		t.Fatalf("expected listenAndServe to receive the router")
 	}
+}
+
+func TestGraft_Hooks(t *testing.T) {
+	app := New()
+	mod := &hookModule{}
+
+	app.UseModule(mod)
+
+	if mod.used != 1 {
+		t.Fatalf("expected OnUse to run exactly once, got %d", mod.used)
+	}
+
+	original := listenAndServe
+	listenAndServe = func(addr string, h http.Handler) error {
+		if mod.started != 1 {
+			t.Fatalf("expected OnStart before server startup, got %d", mod.started)
+		}
+		return nil
+	}
+	t.Cleanup(func() { listenAndServe = original })
+
+	app.Run()
 }

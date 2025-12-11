@@ -14,7 +14,7 @@ func TestModule_WithRoute(t *testing.T) {
 		Name:     "User",
 		BasePath: "/user",
 		Routes: []module.Route[any]{
-			module.Route[any]{
+			{
 				Path:   "/login",
 				Method: "GET",
 				Handler: func(ctx router.Context, deps any) {
@@ -52,11 +52,16 @@ func TestModule_WithDeps(t *testing.T) {
 		UserService UserService
 	}
 
+	var (
+		onUseCalled   bool
+		onStartCalled bool
+	)
+
 	m := module.Module[Deps]{
 		Name:     "User",
 		BasePath: "/user",
 		Routes: []module.Route[Deps]{
-			module.Route[Deps]{
+			{
 				Path:   "/login",
 				Method: "GET",
 				Handler: func(ctx router.Context, deps Deps) {
@@ -65,10 +70,24 @@ func TestModule_WithDeps(t *testing.T) {
 				},
 			},
 		},
+		Hooks: module.Hooks[Deps]{
+			OnUse: func(deps *Deps) {
+				onUseCalled = true
+				deps.UserService = UserService{}
+			},
+			OnStart: func(deps *Deps) {
+				if deps.UserService.Login() == "" {
+					t.Fatalf("expected hooks to see deps updates")
+				}
+				onStartCalled = true
+			},
+		},
 	}
 
 	r := router.New()
+	m.OnUse()
 	m.BuildRoutes(*r)
+	m.OnStart()
 
 	req := httptest.NewRequest("GET", "/user/login", nil)
 	rr := httptest.NewRecorder()
@@ -81,6 +100,12 @@ func TestModule_WithDeps(t *testing.T) {
 	if rr.Body.String() != "Logged in" {
 		t.Errorf("expected body 'Logged in', got %q", rr.Body.String())
 	}
+	if !onUseCalled {
+		t.Fatalf("expected OnUse hook to run")
+	}
+	if !onStartCalled {
+		t.Fatalf("expected OnStart hook to run")
+	}
 }
 
 func TestModule_WithMiddleware(t *testing.T) {
@@ -88,7 +113,7 @@ func TestModule_WithMiddleware(t *testing.T) {
 		Name:     "User",
 		BasePath: "/user",
 		Routes: []module.Route[any]{
-			module.Route[any]{
+			{
 				Path:   "/login",
 				Method: "GET",
 				Handler: func(ctx router.Context, deps any) {
@@ -118,5 +143,38 @@ func TestModule_WithMiddleware(t *testing.T) {
 	}
 	if rr.Body.String() != "I am a middleware" {
 		t.Errorf("expected body 'I am a middleware', got %q", rr.Body.String())
+	}
+}
+
+func TestModule_HooksAllowDepsMutation(t *testing.T) {
+	type Deps struct {
+		Message string
+	}
+
+	m := module.Module[Deps]{
+		BasePath: "/msg",
+		Deps:     Deps{Message: "initial"},
+		Routes: []module.Route[Deps]{{
+			Path:   "/hello",
+			Method: "GET",
+			Handler: func(ctx router.Context, deps Deps) {
+				ctx.Writer.Write([]byte(deps.Message))
+			},
+		}},
+	}
+
+	r := router.New()
+	m.BuildRoutes(*r)
+
+	// Directly mutate dependencies after routes are built to verify handler sees updated value.
+	m.Deps.Message = "updated after hooks"
+
+	req := httptest.NewRequest("GET", "/msg/hello", nil)
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Body.String() != "updated after hooks" {
+		t.Fatalf("expected updated dependency to be visible in handler, got %q", rr.Body.String())
 	}
 }

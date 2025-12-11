@@ -97,10 +97,10 @@ type AuthDeps struct {
 }
 
 auth := module.Module[AuthDeps]{
-    Name:     "auth",
-    BasePath: "/auth",
-    Deps: AuthDeps{Users: users, Sessions: sessions},
-    Middlewares: []router.Middleware{
+	Name:     "auth",
+	BasePath: "/auth",
+	Deps: AuthDeps{Users: users, Sessions: sessions},
+	Middlewares: []router.Middleware{
         requestLogger,
     },
     Routes: []module.Route[AuthDeps]{
@@ -116,9 +116,27 @@ auth := module.Module[AuthDeps]{
                 ctx.Writer.Write([]byte(token))
             },
         },
+	},
+}
+```
+
+Hooks let a module prepare dependencies or kick off background work:
+
+```go
+auth := module.Module[AuthDeps]{
+    // ...
+    Hooks: module.Hooks[AuthDeps]{
+        OnUse: func(deps *AuthDeps) {
+            deps.Users = users.WithCache()
+        },
+        OnStart: func(deps *AuthDeps) {
+            log.Println("auth module ready", deps.Users.Count())
+        },
     },
 }
 ```
+
+`OnUse` runs when the module is registered with `UseModule`. `OnStart` runs right before the server starts, after all modules have been registered. Both receive a pointer to your dependency struct so you can update it in-place.
 
 ## Router Toolbox
 
