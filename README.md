@@ -87,6 +87,7 @@ func main() {
 - `Routes` holds the HTTP verb, relative path, and handler.
 - `Middlewares` lets you apply router middlewares to every route.
 - Handlers receive both the request context (`router.Context`) and your typed dependency value.
+- Global middleware for the whole app: `app.UseMiddleware(...)`; module-specific middleware via `Module.Middlewares`.
 
 Example with dependencies and middleware:
 
@@ -137,6 +138,32 @@ auth := module.Module[AuthDeps]{
 ```
 
 `OnUse` runs when the module is registered with `UseModule`. `OnStart` runs right before the server starts, after all modules have been registered. Both receive a pointer to your dependency struct so you can update it in-place.
+
+## Global Services
+
+- Register once: `app.RegisterService("db", db)`
+- Retrieve (typed helper): `graft.MustServiceAs[Type](app, "db")` or `graft.ServiceAs[Type](app, "db")`
+- Check existence: `app.HasService("db")`
+- Modules can opt in to receive the service bag by implementing `SetServices(*graft.Services)`; `UseModule` injects it before hooks/routes run.
+
+Example: module consuming a registered DB:
+
+```go
+type DBModule struct {
+    services *graft.Services
+}
+
+func (m *DBModule) SetServices(s *graft.Services) { m.services = s }
+
+func (m *DBModule) BuildRoutes(r router.Router) {
+    db := graft.MustGetService[DB](m.services, "db")
+    r.AddHandler("GET /users", func(ctx router.Context) {
+        users := db.All()
+        // ...
+        ctx.Writer.Write([]byte(fmt.Sprintf("%d users", len(users))))
+    })
+}
+```
 
 ## Router Toolbox
 

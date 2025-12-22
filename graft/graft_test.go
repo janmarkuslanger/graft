@@ -2,9 +2,11 @@ package graft
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 
+	"github.com/janmarkuslanger/graft/module"
 	"github.com/janmarkuslanger/graft/router"
 )
 
@@ -107,4 +109,107 @@ func TestGraft_Hooks(t *testing.T) {
 	t.Cleanup(func() { listenAndServe = original })
 
 	app.Run()
+}
+
+func TestGraft_GlobalAndModuleMiddleware(t *testing.T) {
+	app := New()
+
+	app.UseMiddleware(func(ctx router.Context, next router.HandlerFunc) {
+		ctx.Writer.Header().Add("X-Global", "true")
+		next(ctx)
+	})
+
+	mod := &module.Module[struct{}]{
+		BasePath: "/ext",
+		Middlewares: []router.Middleware{
+			func(ctx router.Context, next router.HandlerFunc) {
+				ctx.Writer.Header().Add("X-Module", "true")
+				next(ctx)
+			},
+		},
+		Routes: []module.Route[struct{}]{
+			{
+				Method: http.MethodGet,
+				Path:   "/",
+				Handler: func(ctx router.Context, _ struct{}) {
+					ctx.Writer.WriteHeader(http.StatusOK)
+					ctx.Writer.Write([]byte("ok"))
+				},
+			},
+		},
+	}
+
+	app.UseModule(mod)
+
+	req := httptest.NewRequest(http.MethodGet, "/ext/", nil)
+	rr := httptest.NewRecorder()
+	app.router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200 from module, got %d", rr.Code)
+	}
+	if rr.Header().Get("X-Global") != "true" {
+		t.Fatalf("expected global middleware to run")
+	}
+	if rr.Header().Get("X-Module") != "true" {
+		t.Fatalf("expected module middleware to run")
+	}
+}
+
+func TestGraft_ServiceHelpers(t *testing.T) {
+	app := New()
+
+	type DB struct {
+		URL string
+	}
+
+	db := DB{URL: "postgres://localhost:5432/db"}
+
+	app.RegisterService("db", db)
+
+	if !app.HasService("db") {
+		t.Fatalf("expected service to be registered")
+	}
+
+	got, ok := ServiceAs[DB](app, "db")
+	if !ok {
+		t.Fatalf("expected to get service")
+	}
+	if got.URL != db.URL {
+		t.Fatalf("expected URL %q, got %q", db.URL, got.URL)
+	}
+
+	must := MustServiceAs[DB](app, "db")
+	if must.URL != db.URL {
+		t.Fatalf("expected MustGetService to return registered value")
+	}
+}
+
+type serviceAwareModule struct {
+	services *Services
+}
+
+func (m *serviceAwareModule) BuildRoutes(r router.Router) {
+	// no-op for test
+}
+
+func (m *serviceAwareModule) SetServices(s *Services) {
+	m.services = s
+}
+
+func TestGraft_ServiceAwareModule(t *testing.T) {
+	app := New()
+	app.RegisterService("db", "db-conn")
+
+	mod := &serviceAwareModule{}
+	app.UseModule(mod)
+
+	if mod.services == nil {
+		t.Fatalf("expected services to be injected")
+	}
+
+	val, ok := GetService[string](mod.services, "db")
+	if !ok || val != "db-conn" {
+		t.Fatalf("expected module to see registered service, got ok=%v val=%q", ok, val)
+	}
 }
