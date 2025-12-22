@@ -83,7 +83,6 @@ func (g *Graft) HasService(name string) bool {
 	return HasService(g.services, name)
 }
 
-// Typed helpers without exposing the service bag.
 func ServiceAs[T any](g *Graft, name string) (T, bool) {
 	return GetService[T](g.services, name)
 }
