@@ -19,17 +19,24 @@ type Context struct {
 type HandlerFunc func(ctx Context)
 
 type Router struct {
-	Mux *http.ServeMux
+	Mux         *http.ServeMux
+	middlewares []Middleware
 }
 
 func (r *Router) AddHandler(pattern string, handler HandlerFunc, middlewares ...Middleware) {
-	finalHandler := Chain(handler, middlewares...)
+	combinedMiddlewares := append([]Middleware{}, r.middlewares...)
+	combinedMiddlewares = append(combinedMiddlewares, middlewares...)
+	finalHandler := Chain(handler, combinedMiddlewares...)
 	r.Mux.HandleFunc(pattern, func(w http.ResponseWriter, req *http.Request) {
 		finalHandler(Context{
 			Writer:  w,
 			Request: req,
 		})
 	})
+}
+
+func (r *Router) Use(middlewares ...Middleware) {
+	r.middlewares = append(r.middlewares, middlewares...)
 }
 
 func (r *Router) Static(urlPrefix, dir string, middlewares ...Middleware) {

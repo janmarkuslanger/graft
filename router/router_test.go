@@ -119,3 +119,50 @@ func TestRouter_Static_ServesFiles(t *testing.T) {
 		t.Fatalf("expected empty HEAD body, got %q", headRec.Body.String())
 	}
 }
+
+func TestRouter_Use_GlobalMiddlewares(t *testing.T) {
+	r := router.New()
+
+	var calls []string
+
+	r.Use(func(ctx router.Context, next router.HandlerFunc) {
+		calls = append(calls, "global-before")
+		next(ctx)
+		calls = append(calls, "global-after")
+	})
+
+	r.AddHandler("GET /test", func(ctx router.Context) {
+		calls = append(calls, "handler")
+		ctx.Writer.WriteHeader(http.StatusNoContent)
+	}, func(ctx router.Context, next router.HandlerFunc) {
+		calls = append(calls, "route-before")
+		next(ctx)
+		calls = append(calls, "route-after")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204, got %d", rr.Code)
+	}
+
+	expected := []string{
+		"global-before",
+		"route-before",
+		"handler",
+		"route-after",
+		"global-after",
+	}
+
+	if len(calls) != len(expected) {
+		t.Fatalf("expected %d calls, got %d", len(expected), len(calls))
+	}
+
+	for i := range calls {
+		if calls[i] != expected[i] {
+			t.Errorf("at index %d expected %q, got %q", i, expected[i], calls[i])
+		}
+	}
+}
